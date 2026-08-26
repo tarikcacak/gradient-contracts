@@ -95,8 +95,12 @@ contract CurveMathTest is Test {
     }
 
     function testFuzz_PriceRisesWithSupplySold(uint256 a, uint256 b) public view {
-        a = bound(a, 0, SALE - 1e18);
-        b = bound(b, a + 1e18, SALE);
+        // Gap must be large enough that the price delta clears spotPriceE18's integer
+        // rounding even at the flattest part of the curve (near a == 0), or two samples
+        // can legitimately round to the same price without the curve actually being flat.
+        uint256 minGap = 1_000_000e18;
+        a = bound(a, 0, SALE - minGap);
+        b = bound(b, a + minGap, SALE);
 
         uint256 pA = h.spotPriceE18(V_ETH0 + h.ethInForExactTokens(V_ETH0, V_TOK0, a), V_TOK0 - a);
         uint256 pB = h.spotPriceE18(V_ETH0 + h.ethInForExactTokens(V_ETH0, V_TOK0, b), V_TOK0 - b);

@@ -1,0 +1,41 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+solc = "0.8.28"
+optimizer = true
+optimizer_runs = 200
+via_ir = false
+evm_version = "cancun"
+bytecode_hash = "none"
+fs_permissions = [{ access = "read", path = "./out" }]
+
+# Sepolia is fine at 10k for day-to-day; crank it for a release candidate.
+[profile.default.fuzz]
+runs = 10_000
+
+[profile.default.invariant]
+runs = 256
+depth = 64
+fail_on_revert = false
+
+[profile.ci.fuzz]
+runs = 50_000
+
+[profile.ci.invariant]
+runs = 1_024
+depth = 128
+
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"
+
+[etherscan]
+sepolia = { key = "${ETHERSCAN_API_KEY}", chain = 11155111 }
+
+[fmt]
+line_length = 118
+tab_width = 4
+bracket_spacing = false
+int_types = "long"

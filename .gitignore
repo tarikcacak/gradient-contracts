@@ -1,0 +1,8 @@
+out/
+cache/
+broadcast/
+lib/
+.env
+.env.local
+*.log
+docs/

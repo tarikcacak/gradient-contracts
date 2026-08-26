@@ -7,12 +7,6 @@ import {TokenFactory} from "../../src/TokenFactory.sol";
 import {LaunchToken} from "../../src/LaunchToken.sol";
 import {MockWETH, MockUniFactory, BreakableRouter} from "../mocks/MockUniswap.sol";
 
-/// @notice Covers the failure path: what happens when the router reverts during
-///         the in-transaction graduation.
-///
-/// This is the most delicate branch in the contract. A token that sells out and
-/// then cannot graduate must not become a tomb: holders have to keep their exit,
-/// and the graduation has to stay retryable.
 contract GraduationRecoveryTest is Test {
     BondingCurve internal curve;
     TokenFactory internal factory;
@@ -51,8 +45,6 @@ contract GraduationRecoveryTest is Test {
         curve.buy{value: 5 ether}(token, 0, block.timestamp);
     }
 
-    /// The buy itself must still succeed - the buyer paid, they get their
-    /// tokens, and the failure is recorded rather than thrown.
     function test_FailedGraduationDoesNotRevertTheBuy() public {
         address token = _soldOutWithBrokenRouter();
 
@@ -60,8 +52,6 @@ contract GraduationRecoveryTest is Test {
         assertFalse(LaunchToken(token).tradingUnlocked(), "unlocked despite failure");
     }
 
-    /// It must roll back to BONDING, not sit in GRADUATING - GRADUATING blocks
-    /// sells too, which would freeze the raise and every holder's position.
     function test_FailedGraduationRollsBackToBonding() public {
         address token = _soldOutWithBrokenRouter();
 
@@ -71,7 +61,6 @@ contract GraduationRecoveryTest is Test {
         assertEq(vTok, LaunchToken(token).balanceOf(address(curve)), "escrow desynced");
     }
 
-    /// The whole point of the rollback: holders keep their exit.
     function test_HoldersCanStillSellAfterAFailedGraduation() public {
         address token = _soldOutWithBrokenRouter();
 
@@ -87,7 +76,6 @@ contract GraduationRecoveryTest is Test {
         assertEq(bob.balance, before + out);
     }
 
-    /// A sold-out token cannot be bought into - the clamp yields zero tokens.
     function test_BuyingASoldOutTokenReverts() public {
         address token = _soldOutWithBrokenRouter();
 
@@ -96,7 +84,6 @@ contract GraduationRecoveryTest is Test {
         curve.buy{value: 0.01 ether}(token, 0, block.timestamp);
     }
 
-    /// Anyone can retry once the router is working again.
     function test_AnyoneCanRetryGraduation() public {
         address token = _soldOutWithBrokenRouter();
         router.setBroken(false);
@@ -112,8 +99,6 @@ contract GraduationRecoveryTest is Test {
         assertEq(address(curve).balance, curve.protocolFees(), "reserves left behind");
     }
 
-    /// Retrying while the router is still broken must revert cleanly, leaving
-    /// the token exactly where it was.
     function test_RetryWhileStillBrokenChangesNothing() public {
         address token = _soldOutWithBrokenRouter();
 
@@ -125,7 +110,6 @@ contract GraduationRecoveryTest is Test {
         assertEq(vTok, curve.LP_RESERVE());
     }
 
-    /// `graduate` must not be a back door for a token that has not sold out.
     function test_CannotGraduateATokenThatHasNotSoldOut() public {
         vm.prank(alice);
         address token = factory.createToken("Early", "ERL", "");
@@ -137,7 +121,6 @@ contract GraduationRecoveryTest is Test {
         curve.graduate(token);
     }
 
-    /// After a sell reopens headroom, a normal buy re-triggers graduation.
     function test_SellThenBuyReGraduates() public {
         address token = _soldOutWithBrokenRouter();
         router.setBroken(false);

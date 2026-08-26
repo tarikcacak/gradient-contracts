@@ -4,8 +4,6 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {CurveMath} from "../../src/libs/CurveMath.sol";
 
-/// @dev External wrapper. Library calls are inlined as JUMPs, so `expectRevert`
-///      cannot observe them without a real CALL boundary.
 contract CurveMathHarness {
     function buyQuote(uint256 a, uint256 b, uint256 c) external pure returns (uint256) {
         return CurveMath.buyQuote(a, b, c);
@@ -36,10 +34,6 @@ contract CurveMathTest is Test {
         h = new CurveMathHarness();
     }
 
-    // --------------------------------------------------- reference constants
-
-    /// The whole parameterisation rests on this: with vTok ending at vTok0/5,
-    /// the total raise is exactly 4x the virtual ETH seed.
     function test_TotalRaiseIsFourTimesVirtualSeed() public view {
         uint256 need = h.ethInForExactTokens(V_ETH0, V_TOK0, SALE);
         assertEq(need, 4 * V_ETH0, "raise != 4x seed");
@@ -52,11 +46,8 @@ contract CurveMathTest is Test {
         uint256 vEthEnd = V_ETH0 + 4 * V_ETH0;
         assertEq(h.spotPriceE18(vEthEnd, LP_RESERVE), 3.125e9, "close price");
 
-        // 25x, exactly (vTok0 / vTokEnd)^2
         assertEq(h.spotPriceE18(vEthEnd, LP_RESERVE) / h.spotPriceE18(V_ETH0, V_TOK0), 25, "multiple");
     }
-
-    // ------------------------------------------------------------ inversions
 
     function testFuzz_EthInForExactTokensIsInverseOfBuyQuote(uint256 tokensOut) public view {
         tokensOut = bound(tokensOut, 1e18, SALE);
@@ -64,17 +55,10 @@ contract CurveMathTest is Test {
         uint256 ethIn = h.ethInForExactTokens(V_ETH0, V_TOK0, tokensOut);
         uint256 got = h.buyQuote(V_ETH0, V_TOK0, ethIn);
 
-        // Rounding up on the way in means the buyer never receives less than
-        // asked, and overshoots by at most curve-dust.
         assertGe(got, tokensOut, "inverse undershot");
         assertLe(got - tokensOut, 1e12, "inverse overshot by more than dust");
     }
 
-    // ------------------------------------------------------- rounding policy
-
-    /// A buy immediately followed by a sell of everything received must never
-    /// return more ETH than went in - even with zero fees. If this fails, the
-    /// curve is a money printer.
     function testFuzz_RoundTripIsNeverProfitable(uint256 ethIn) public view {
         ethIn = bound(ethIn, 1, 0.5 ether);
 
@@ -88,7 +72,6 @@ contract CurveMathTest is Test {
         assertLe(ethBack, ethIn, "round trip printed ETH");
     }
 
-    /// k must never decrease. Rounding is arranged so it can only grow.
     function testFuzz_BuyDoesNotDecreaseK(uint256 vEth, uint256 vTok, uint256 ethIn) public view {
         vEth = bound(vEth, V_ETH0, 100 ether);
         vTok = bound(vTok, LP_RESERVE, V_TOK0);
@@ -111,8 +94,6 @@ contract CurveMathTest is Test {
         assertGe((vEth - out) * (vTok + tokenIn), vEth * vTok, "k shrank on sell");
     }
 
-    // ---------------------------------------------------------- monotonicity
-
     function testFuzz_PriceRisesWithSupplySold(uint256 a, uint256 b) public view {
         a = bound(a, 0, SALE - 1e18);
         b = bound(b, a + 1e18, SALE);
@@ -122,14 +103,11 @@ contract CurveMathTest is Test {
         assertGt(pB, pA, "price not monotonic");
     }
 
-    /// Spending more ETH must never return fewer tokens.
     function testFuzz_BuyQuoteMonotonicInEthIn(uint256 x, uint256 d) public view {
         x = bound(x, 1, 1 ether);
         d = bound(d, 1, 1 ether);
         assertGe(h.buyQuote(V_ETH0, V_TOK0, x + d), h.buyQuote(V_ETH0, V_TOK0, x));
     }
-
-    // ------------------------------------------------------------------ edges
 
     function test_ZeroInputsReturnZero() public view {
         assertEq(h.buyQuote(V_ETH0, V_TOK0, 0), 0);
@@ -147,8 +125,6 @@ contract CurveMathTest is Test {
         h.buyQuote(0, V_TOK0, 1 ether);
     }
 
-    /// The largest intermediate product the curve can form stays far below
-    /// 2**256 at these constants.
     function test_NoOverflowAtExtremes() public view {
         assertLt(h.buyQuote(V_ETH0, V_TOK0, 1_000_000 ether), V_TOK0);
         assertLt(h.sellQuote(100 ether, V_TOK0, V_TOK0), 100 ether);

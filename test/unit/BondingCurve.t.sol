@@ -3,13 +3,12 @@ pragma solidity ^0.8.24;
 
 import {BaseTest} from "../Base.t.sol";
 import {BondingCurve} from "../../src/BondingCurve.sol";
+import {Ownable2Step} from "../../src/libs/Auth.sol";
 import {LaunchToken} from "../../src/LaunchToken.sol";
 import {IERC20, IUniswapV2Pair} from "../../src/interfaces/IExternal.sol";
 
 contract BondingCurveTest is BaseTest {
     address internal constant DEAD = 0x000000000000000000000000000000000000dEaD;
-
-    // ------------------------------------------------------------- creation
 
     function test_CreateEscrowsWholeSupplyAndOpensPair() public {
         address token = _create(alice);
@@ -47,8 +46,6 @@ contract BondingCurveTest is BaseTest {
         vm.expectRevert(LaunchToken.AlreadyInitialized.selector);
         LaunchToken(impl).initialize("X", "X", address(curve), 1);
     }
-
-    // ------------------------------------------------------------------ buy
 
     function test_BuyMatchesQuoteExactly() public {
         address token = _create(alice);
@@ -102,15 +99,12 @@ contract BondingCurveTest is BaseTest {
         assertGt(p2, p1);
     }
 
-    /// Two buyers of the same size: the earlier one must get more tokens.
     function test_EarlierBuyerGetsMore() public {
         address token = _create(alice);
         uint256 first = _buy(bob, token, 0.05 ether);
         uint256 second = _buy(carol, token, 0.05 ether);
         assertGt(first, second, "curve did not reward the early buyer");
     }
-
-    // ----------------------------------------------------------------- sell
 
     function test_SellReturnsEthAndRestoresReserves() public {
         address token = _create(alice);
@@ -127,7 +121,6 @@ contract BondingCurveTest is BaseTest {
         assertGe(vEth, V_ETH_START, "vEth fell below the virtual floor");
     }
 
-    /// The only thing a buy-then-sell can lose is fees plus curve dust.
     function test_RoundTripCostsOnlyFees() public {
         address token = _create(alice);
 
@@ -138,7 +131,6 @@ contract BondingCurveTest is BaseTest {
         uint256 lost = before - bob.balance;
         assertEq(lost, 0.2 ether - ethOut);
 
-        // 1% in, then 1% out on a slightly smaller notional -> just under 2%.
         assertLt(lost, 0.0042 ether, "lost more than two fee legs");
         assertGt(lost, 0.0038 ether, "fee not actually charged");
     }
@@ -166,8 +158,6 @@ contract BondingCurveTest is BaseTest {
         vm.stopPrank();
     }
 
-    // -------------------------------------------------------- trading gate
-
     function test_TransfersLockedBeforeGraduation() public {
         address token = _create(alice);
         _buy(bob, token, 0.1 ether);
@@ -177,8 +167,6 @@ contract BondingCurveTest is BaseTest {
         LaunchToken(token).transfer(carol, 1e18);
     }
 
-    /// Pushing tokens straight into the curve would desync `vTok` from escrow
-    /// and strand them, so the gate keys on the curve being the *initiator*.
     function test_CannotPushTokensIntoTheCurveDirectly() public {
         address token = _create(alice);
         _buy(bob, token, 0.1 ether);
@@ -191,7 +179,6 @@ contract BondingCurveTest is BaseTest {
     function test_TransfersUnlockedAfterGraduation() public {
         address token = _create(alice);
         _buy(bob, token, 0.1 ether);
-        // Graduate with bob so the recipient below starts from a clean balance.
         _graduate(bob, token);
 
         assertTrue(LaunchToken(token).tradingUnlocked());
@@ -205,8 +192,6 @@ contract BondingCurveTest is BaseTest {
         assertEq(LaunchToken(token).balanceOf(carol), amt);
     }
 
-    // ------------------------------------------------- final buy + clamping
-
     function test_FinalBuyClampsAndRefundsSurplus() public {
         address token = _create(alice);
 
@@ -214,14 +199,10 @@ contract BondingCurveTest is BaseTest {
         vm.prank(carol);
         curve.buy{value: 5 ether}(token, 0, block.timestamp);
 
-        // The whole sale costs 0.5 ETH net, ~0.505 ETH gross of the 1% fee.
         uint256 spent = before - carol.balance;
         assertLt(spent, 0.51 ether, "did not refund the surplus");
         assertGt(spent, 0.50 ether, "refunded too much");
 
-        // The clamp landed the sale exactly on SALE_SUPPLY, which is what
-        // triggered graduation; graduation then emptied the escrow, so `vTok`
-        // reads 0 rather than LP_RESERVE. Assert the sale total instead.
         (, uint256 vTok, uint256 realEth, BondingCurve.Status status) = _state(token);
         assertTrue(status == BondingCurve.Status.GRADUATED, "did not graduate");
         assertEq(vTok, 0, "escrow not emptied by graduation");
@@ -230,8 +211,6 @@ contract BondingCurveTest is BaseTest {
         assertEq(curve.priceOf(token), 0, "graduated token still quotes a curve price");
     }
 
-    /// The clamp stops the sale precisely on SALE_SUPPLY. Observed one buy
-    /// before graduation empties the escrow.
     function test_SaleStopsExactlyOnTheAllocation() public {
         address token = _create(alice);
         _buy(bob, token, 0.3 ether);
@@ -242,7 +221,6 @@ contract BondingCurveTest is BaseTest {
         vm.prank(carol);
         curve.buy{value: 5 ether}(token, 0, block.timestamp);
 
-        // Total delivered across both buys is exactly the sale allocation.
         uint256 delivered = LaunchToken(token).balanceOf(bob) + LaunchToken(token).balanceOf(carol);
         assertEq(delivered, curve.SALE_SUPPLY(), "sale did not stop on the allocation");
     }
@@ -264,17 +242,11 @@ contract BondingCurveTest is BaseTest {
         curve.graduate(token);
     }
 
-    // --------------------------------------------------------- graduation
-
-    /// The headline correctness property: the pool must open at the price the
-    /// curve closed at, or the first Uniswap trade is a free arb.
     function test_PoolOpensAtTheCurveClosingPrice() public {
         address token = _create(alice);
 
         _buy(bob, token, 0.3 ether);
 
-        // The clamp makes the closing state path-independent: vTok always lands
-        // on LP_RESERVE and vEth on 5x the virtual seed.
         uint256 closingPrice = (5 * V_ETH_START * 1e18) / curve.LP_RESERVE();
 
         _graduate(carol, token);
@@ -287,7 +259,6 @@ contract BondingCurveTest is BaseTest {
 
         uint256 poolPrice = (poolEth * 1e18) / poolTok;
 
-        // Within 10 bps. Any wider and the pool is arbitrageable on block one.
         assertApproxEqRel(poolPrice, closingPrice, 0.001e18, "pool price != curve close");
     }
 
@@ -299,11 +270,9 @@ contract BondingCurveTest is BaseTest {
 
         (,,,, address pair,) = curve.states(token);
 
-        // All LP is at the burn address; nobody can pull the liquidity.
         assertEq(IUniswapV2Pair(pair).balanceOf(address(curve)), 0, "curve kept LP");
         assertGt(IUniswapV2Pair(pair).balanceOf(DEAD), 0, "LP not burned");
 
-        // Tokens that did not fit the pool at the closing price are destroyed.
         assertLt(LaunchToken(token).totalSupply(), supplyBefore, "surplus not burned");
         assertEq(LaunchToken(token).balanceOf(address(curve)), 0, "curve kept tokens");
     }
@@ -314,16 +283,13 @@ contract BondingCurveTest is BaseTest {
 
         (,, uint256 realEth,) = _state(token);
         assertEq(realEth, 0);
-        // Everything left in the contract is claimable fees, nothing more.
         assertEq(address(curve).balance, curve.protocolFees());
     }
 
-    /// A donated balance on a virgin pair must not skew the opening ratio.
     function test_DonationToPairDoesNotSkewOpeningPrice() public {
         address token = _create(alice);
         (,,,, address pair,) = curve.states(token);
 
-        // Attacker parks WETH in the empty pair before graduation.
         vm.prank(bob);
         weth.deposit{value: 5 ether}();
         vm.prank(bob);
@@ -337,11 +303,8 @@ contract BondingCurveTest is BaseTest {
         uint256 closingPrice = (5 * V_ETH_START * 1e18) / curve.LP_RESERVE();
 
         assertApproxEqRel(poolPrice, closingPrice, 0.001e18, "donation skewed the pool");
-        // The donation was swept, not absorbed.
         assertEq(IERC20(address(weth)).balanceOf(treasury), 5 ether, "donation not swept");
     }
-
-    // --------------------------------------------------------------- fees
 
     function test_ClaimFeesOnlyEverReachesTreasury() public {
         address token = _create(alice);
@@ -350,7 +313,6 @@ contract BondingCurveTest is BaseTest {
         uint256 fees = curve.protocolFees();
         assertGt(fees, 0);
 
-        // Callable by anyone; the destination is immutable.
         vm.prank(carol);
         curve.claimFees();
 
@@ -365,20 +327,16 @@ contract BondingCurveTest is BaseTest {
         (,, uint256 realEth,) = _state(token);
         curve.claimFees();
 
-        // Reserve ETH is untouched and still fully backed.
         assertEq(address(curve).balance, realEth, "claimFees ate reserves");
         (,, uint256 realAfter,) = _state(token);
         assertEq(realAfter, realEth);
 
-        // And the holder can still exit for their share.
         uint256 bal = LaunchToken(token).balanceOf(bob);
         uint256 got = _sell(bob, token, bal);
         assertGt(got, 0);
     }
 
     function test_FeeCapsAreEnforced() public {
-        // Read the caps BEFORE arming expectRevert: argument evaluation is
-        // itself an external call, and it would swallow the expectation.
         uint256 maxTrade = curve.MAX_TRADE_FEE_BPS();
         uint256 maxGrad = curve.MAX_GRADUATION_FEE_BPS();
 
@@ -389,14 +347,11 @@ contract BondingCurveTest is BaseTest {
         vm.expectRevert(BondingCurve.FeeTooHigh.selector);
         curve.setFees(0, maxGrad + 1);
 
-        // The ceiling itself is allowed.
         curve.setFees(maxTrade, maxGrad);
         vm.stopPrank();
 
         assertEq(curve.tradeFeeBps(), maxTrade);
     }
-
-    // ------------------------------------------------------ access control
 
     function test_OnlyFactoryCanRegister() public {
         vm.prank(alice);
@@ -419,13 +374,10 @@ contract BondingCurveTest is BaseTest {
 
     function test_NonOwnerCannotChangeFees() public {
         vm.prank(alice);
-        vm.expectRevert(BondingCurve.NotOwner.selector);
+        vm.expectRevert(Ownable2Step.NotOwner.selector);
         curve.setFees(0, 0);
     }
 
-    // ----------------------------------------------------- circuit breaker
-
-    /// Buys pause. Sells never do - a switch that traps holders is a rug.
     function test_PauseStopsBuysButNeverSells() public {
         address token = _create(alice);
         uint256 bought = _buy(bob, token, 0.1 ether);
@@ -441,11 +393,7 @@ contract BondingCurveTest is BaseTest {
         assertGt(got, 0, "pause trapped a holder");
     }
 
-    // ------------------------------------------------------------- fuzzing
-
     function testFuzz_QuoteAlwaysMatchesExecution(uint256 ethIn) public {
-        // Kept below the clamp threshold so the assertion on fee deltas is not
-        // confounded by the graduation fee.
         ethIn = bound(ethIn, 1e12, 0.3 ether);
         address token = _create(alice);
 

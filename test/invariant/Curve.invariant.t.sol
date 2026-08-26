@@ -7,9 +7,6 @@ import {TokenFactory} from "../../src/TokenFactory.sol";
 import {LaunchToken} from "../../src/LaunchToken.sol";
 import {MockWETH, MockUniFactory, MockRouter} from "../mocks/MockUniswap.sol";
 
-/// @dev Drives random, bounded traffic at the curve. Every entry point clamps
-///      its inputs and swallows expected reverts so the fuzzer spends its runs
-///      exploring state rather than bouncing off input validation.
 contract Handler is Test {
     BondingCurve public curve;
     address[] public tokens;
@@ -39,8 +36,6 @@ contract Handler is Test {
 
         if (actor.balance < amount) return;
 
-        // Credit only what the curve actually kept - the final buy is clamped
-        // and refunds its surplus, so `amount` would badly overstate inflow.
         uint256 before = actor.balance;
         vm.prank(actor);
         try curve.buy{value: amount}(token, 0, block.timestamp) {
@@ -70,8 +65,6 @@ contract Handler is Test {
         try curve.claimFees() {} catch {}
     }
 
-    /// Exercises the permissionless retry path, including its rejection of
-    /// tokens that have not sold out.
     function graduate(uint256 tokenSeed) external {
         try curve.graduate(_token(tokenSeed)) {} catch {}
     }
@@ -124,8 +117,6 @@ contract CurveInvariantTest is Test {
         targetContract(address(handler));
     }
 
-    /// The single most important property: the contract can always honour every
-    /// reserve it claims to hold, plus every fee it has accrued.
     function invariant_AlwaysFullyBacked() public view {
         uint256 owed = curve.protocolFees();
         for (uint256 i = 0; i < handler.tokenCount(); i++) {
@@ -135,8 +126,6 @@ contract CurveInvariantTest is Test {
         assertGe(address(curve).balance, owed, "curve is under-collateralised");
     }
 
-    /// While bonding, the real reserve is exactly the virtual reserve minus its
-    /// seed. Any drift means buy and sell disagree about accounting.
     function invariant_RealEthTracksVirtualEth() public view {
         for (uint256 i = 0; i < handler.tokenCount(); i++) {
             address t = handler.tokenAt(i);
@@ -147,7 +136,6 @@ contract CurveInvariantTest is Test {
         }
     }
 
-    /// The token reserve is not virtual: it must equal the escrowed balance.
     function invariant_TokenReserveIsEscrowed() public view {
         for (uint256 i = 0; i < handler.tokenCount(); i++) {
             address t = handler.tokenAt(i);
@@ -158,8 +146,6 @@ contract CurveInvariantTest is Test {
         }
     }
 
-    /// The curve can never sell past its allocation, and never below the LP
-    /// reserve it must hand to Uniswap.
     function invariant_SaleNeverExceedsAllocation() public view {
         for (uint256 i = 0; i < handler.tokenCount(); i++) {
             (, uint256 vTok,,,, BondingCurve.Status status) = curve.states(handler.tokenAt(i));
@@ -169,7 +155,6 @@ contract CurveInvariantTest is Test {
         }
     }
 
-    /// k must never shrink. If it does, rounding is leaking value to traders.
     function invariant_KNeverShrinks() public view {
         uint256 k0 = V_ETH_START * curve.TOTAL_SUPPLY();
         for (uint256 i = 0; i < handler.tokenCount(); i++) {
@@ -181,12 +166,10 @@ contract CurveInvariantTest is Test {
         }
     }
 
-    /// Traders can never extract more ETH than they put in, in aggregate.
     function invariant_TradersNeverExtractMoreThanDeposited() public view {
         assertLe(handler.ghostEthOut(), handler.ghostEthIn(), "traders net-extracted ETH");
     }
 
-    /// Trading stays locked until graduation, for every token.
     function invariant_TradingLockedWhileBonding() public view {
         for (uint256 i = 0; i < handler.tokenCount(); i++) {
             address t = handler.tokenAt(i);

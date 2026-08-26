@@ -60,7 +60,6 @@ abstract contract BaseTest is Test {
         vm.stopPrank();
     }
 
-    /// @dev Overpays deliberately; the final-buy clamp refunds the surplus.
     function _graduate(address who, address token) internal {
         vm.prank(who);
         curve.buy{value: 5 ether}(token, 0, block.timestamp);

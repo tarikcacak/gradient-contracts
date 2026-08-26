@@ -7,23 +7,6 @@ import {TokenFactory} from "../../src/TokenFactory.sol";
 import {LaunchToken} from "../../src/LaunchToken.sol";
 import {IERC20, IUniswapV2Pair, IUniswapV2Router02} from "../../src/interfaces/IExternal.sol";
 
-/// @notice Graduation against the REAL Uniswap V2 deployment on Sepolia.
-///
-/// The mocks in the unit suite are a convenience, not evidence. This is the test
-/// that tells you whether the router you configured actually exists, whether its
-/// factory matches, and whether `addLiquidityETH` behaves as assumed.
-///
-///   forge test --fork-url $SEPOLIA_RPC_URL --match-path "test/fork/*" -vvv
-///
-/// Set UNISWAP_V2_ROUTER in .env. Do NOT copy an address from a tutorial: the
-/// Sepolia V2 addresses in circulation contradict each other and several are
-/// dead or belong to forks. Verify first:
-///
-///   cast call $ROUTER "factory()(address)" --rpc-url $SEPOLIA_RPC_URL
-///   cast call $ROUTER "WETH()(address)"    --rpc-url $SEPOLIA_RPC_URL
-///
-/// If no trustworthy router exists, deploy your own V2 factory + router to
-/// Sepolia and point this at it. That removes the dependency entirely.
 contract GraduationForkTest is Test {
     BondingCurve internal curve;
     TokenFactory internal factory;
@@ -36,7 +19,6 @@ contract GraduationForkTest is Test {
     uint256 internal constant V_ETH_START = 0.125 ether;
 
     function setUp() public {
-        // Skips cleanly when run without --fork-url.
         try vm.envAddress("UNISWAP_V2_ROUTER") returns (address r) {
             router = r;
         } catch {
@@ -78,7 +60,6 @@ contract GraduationForkTest is Test {
         (,,,, address pair,) = curve.states(token);
         assertGt(pair.code.length, 0, "real pair not deployed");
 
-        // Overpay; the clamp refunds the surplus and graduation fires inline.
         vm.prank(buyer);
         curve.buy{value: 5 ether}(token, 0, block.timestamp);
 
@@ -86,11 +67,9 @@ contract GraduationForkTest is Test {
         assertTrue(status == BondingCurve.Status.GRADUATED, "did not graduate");
         assertEq(realEth, 0, "reserves left behind");
 
-        // LP is burned; the pool is unruggable.
         assertEq(IUniswapV2Pair(pair).balanceOf(address(curve)), 0);
         assertGt(IUniswapV2Pair(pair).balanceOf(0x000000000000000000000000000000000000dEaD), 0);
 
-        // Pool opened at the curve's closing price.
         uint256 poolTok = IERC20(token).balanceOf(pair);
         uint256 poolEth = IERC20(curve.weth()).balanceOf(pair);
         uint256 poolPrice = (poolEth * 1e18) / poolTok;
@@ -100,11 +79,9 @@ contract GraduationForkTest is Test {
         console2.log("curve close  ", closingPrice);
         assertApproxEqRel(poolPrice, closingPrice, 0.001e18, "pool price != curve close");
 
-        // Token is freely transferable now.
         assertTrue(LaunchToken(token).tradingUnlocked());
     }
 
-    /// An attacker donating into the empty pair must not move the opening price.
     function test_DonationAttackAgainstRealPair() public onlyForked {
         vm.prank(buyer);
         address token = factory.createToken("Fork Token", "FORK", "");

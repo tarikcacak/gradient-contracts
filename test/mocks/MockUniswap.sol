@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "../../src/interfaces/IExternal.sol";
 
-/// @dev Minimal ERC-20 shared by the mock WETH and mock pair.
 contract MockERC20 {
     string public name;
     string public symbol;
@@ -73,8 +72,6 @@ contract MockWETH is MockERC20("Wrapped Ether", "WETH") {
     }
 }
 
-/// @dev Faithful enough on the paths the curve touches: first-mint liquidity
-///      (including MINIMUM_LIQUIDITY), reserves, and skim.
 contract MockPair is MockERC20("Uniswap V2", "UNI-V2") {
     uint256 public constant MINIMUM_LIQUIDITY = 1000;
 
@@ -223,9 +220,6 @@ contract MockRouter {
     }
 }
 
-/// @dev A router that can be made to fail on demand, to exercise the
-///      graduation rollback path. `factory()` and `WETH()` keep working so the
-///      BondingCurve constructor still wires up.
 contract BreakableRouter is MockRouter {
     bool public broken;
 

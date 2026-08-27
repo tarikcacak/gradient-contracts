@@ -4,5 +4,6 @@ broadcast/
 lib/
 .env
 .env.local
+.env.example
 *.log
 docs/

@@ -13,8 +13,8 @@ contract BondingCurve is ReentrancyGuard, Ownable2Step {
     uint256 public constant LP_RESERVE = TOTAL_SUPPLY - SALE_SUPPLY;
     uint256 public constant BPS = 10_000;
 
-    uint256 public constant MAX_TRADE_FEE_BPS = 200; // 2%
-    uint256 public constant MAX_GRADUATION_FEE_BPS = 1_000; // 10%
+    uint256 public constant MAX_TRADE_FEE_BPS = 200;
+    uint256 public constant MAX_GRADUATION_FEE_BPS = 1_000;
 
     address internal constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
@@ -61,7 +61,7 @@ contract BondingCurve is ReentrancyGuard, Ownable2Step {
         address indexed token,
         address indexed trader,
         bool isBuy,
-        uint256 ethAmount, // gross ETH, inclusive of fee
+        uint256 ethAmount,
         uint256 tokenAmount,
         uint256 fee,
         uint256 vEthAfter,
@@ -168,7 +168,7 @@ contract BondingCurve is ReentrancyGuard, Ownable2Step {
         netIn = ethIn - fee;
         tokensOut = CurveMath.buyQuote(vEth, vTok, netIn);
 
-        uint256 maxOut = vTok - LP_RESERVE; // tokens still sellable on the curve
+        uint256 maxOut = vTok - LP_RESERVE;
         if (tokensOut > maxOut) {
 
             tokensOut = maxOut;

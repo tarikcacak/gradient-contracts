@@ -6,14 +6,6 @@ import {BondingCurve} from "../src/BondingCurve.sol";
 import {TokenFactory} from "../src/TokenFactory.sol";
 import {IUniswapV2Router02} from "../src/interfaces/IExternal.sol";
 
-/// @notice Deploys the launchpad to Sepolia.
-///
-///   forge script script/Deploy.s.sol:Deploy \
-///     --rpc-url $SEPOLIA_RPC_URL --broadcast --verify \
-///     --etherscan-api-key $ETHERSCAN_API_KEY -vvvv
-///
-/// RECORD THE DEPLOY BLOCK printed at the end. It becomes DEPLOY_BLOCK for the
-/// Go indexer; without it you are backfilling the whole chain.
 contract Deploy is Script {
     function run() external {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -24,7 +16,6 @@ contract Deploy is Script {
         uint256 virtualEthStart = vm.envOr("VIRTUAL_ETH_START", uint256(0.125 ether));
         uint256 createFee = vm.envOr("CREATE_FEE", uint256(0.0001 ether));
 
-        // Fail loudly here rather than at the first graduation.
         require(router.code.length > 0, "router has no code on this chain");
         address uniFactory = IUniswapV2Router02(router).factory();
         address weth = IUniswapV2Router02(router).WETH();
@@ -60,9 +51,6 @@ contract Deploy is Script {
     }
 }
 
-/// @notice Smoke test against a live deployment: launch a token, buy, sell.
-///
-///   forge script script/Deploy.s.sol:Smoke --rpc-url $SEPOLIA_RPC_URL --broadcast
 contract Smoke is Script {
     function run() external {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
